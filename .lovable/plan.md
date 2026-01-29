@@ -1,199 +1,285 @@
 
-# Plano de Implementacao - CRM Imobiliario
 
-## Resumo
+# Plano: Formulario de Imoveis + Funil de Vendas
 
-Este plano cria um CRM imobiliario moderno usando React/Vite com Supabase como backend, baseado na analise dos documentos de auditoria do sistema legado.
+## Visao Geral
 
-## Problemas a Resolver Primeiro
+Este plano implementa duas funcionalidades principais do CRM imobiliario:
+1. **Formulario completo de cadastro de imoveis** com upload de fotos para Supabase Storage
+2. **Funil de vendas visual** com drag-and-drop para gerenciamento de leads
 
-Antes de comecar a implementacao, o projeto precisa de configuracoes basicas que estao faltando:
-- Arquivo de configuracao do Vite (`vite.config.ts`)
-- Script de build no arquivo de dependencias
-- Estrutura de pastas e componentes do React
+## Pre-requisito Critico
 
-## Arquitetura do Sistema
-
-```text
-+------------------+
-|    FRONTEND      |
-|  React + Vite    |
-|  Tailwind CSS    |
-|  shadcn/ui       |
-+--------+---------+
-         |
-         v
-+--------+---------+
-|   SUPABASE       |
-|  PostgreSQL      |
-|  Auth            |
-|  Edge Functions  |
-|  Storage         |
-+------------------+
+Antes de implementar, o usuario precisa adicionar o script `build:dev` ao `package.json`:
+```json
+{
+  "scripts": {
+    "build:dev": "vite build --mode development"
+  }
+}
 ```
 
-## Modulos Principais (baseados na analise do sistema legado)
+---
 
-### 1. Autenticacao e Usuarios
-- Login/Logout com Supabase Auth
-- Perfis de usuario (Master, Gerente, Corretor, Call Center, Estagiario)
-- Sistema de permissoes granulares (tabela separada para roles)
-- Controle de acesso por departamento (Vendas, Locacao, Ambos)
+## Parte 1: Formulario de Cadastro de Imoveis
 
-### 2. Gestao de Imoveis
-- Cadastro completo de imoveis (multi-step wizard)
-- Tipos: Apartamento, Casa, Comercial, Terreno
-- Finalidades: Venda, Locacao, Ambos
-- Upload de fotos com galeria
-- Geocodificacao e mapa
-- Status: Disponivel, Vendido, Locado, Reservado
+### 1.1 Estrutura Multi-Step (Wizard)
 
-### 3. Contratos de Locacao
-- Cadastro de contratos
-- Locatarios, Locadores, Fiadores
-- Geracao automatica de mensalidades
-- Calculo de reajustes (IGPM, IPCA, INPC)
-- Tipos de garantia (Caucao, Fiador, Seguro)
-
-### 4. CRM - Leads e Propostas
-- Captura de leads
-- Funil de vendas
-- Propostas de compra/locacao
-- Atendimento ao cliente (FAC)
-
-### 5. Condominios
-- Cadastro de condominios
-- Torres e blocos
-- Infraestrutura e amenidades
-
-### 6. Dashboard e Relatorios
-- Metricas principais
-- Graficos de status
-- Listagens rapidas
-
-## Estrutura do Banco de Dados (Supabase)
-
-Tabelas principais a serem criadas:
+O formulario sera dividido em 4 etapas para melhor usabilidade:
 
 ```text
-TABELAS CORE:
-- real_estates (imobiliarias)
-- units (filiais)
-- profiles (perfis de usuarios)
-- user_roles (roles em tabela separada - OBRIGATORIO)
-- permissions (permissoes)
+Etapa 1: Informacoes Basicas
+- Titulo, codigo, tipo de imovel
+- Finalidade (venda/locacao/ambos)
+- Status (disponivel/vendido/locado/reservado)
+- Descricao
 
-IMOVEIS:
-- property_types (tipos)
-- properties (imoveis)
-- property_photos (fotos)
-- property_documents (documentos)
+Etapa 2: Localizacao
+- CEP (com busca automatica)
+- Endereco, numero, complemento
+- Bairro, cidade, estado
 
-LOCACAO:
-- rentals (contratos)
-- rental_parties (locatarios, locadores, fiadores)
-- rental_installments (mensalidades)
+Etapa 3: Caracteristicas
+- Area total e util
+- Quartos, suites, banheiros
+- Vagas de garagem
+- Preco venda/aluguel
+- Condominio, IPTU
 
-CRM:
-- leads (leads)
-- proposals (propostas)
-- customer_services (atendimentos)
-
-APOIO:
-- condominiums (condominios)
-- condominium_amenities (comodidades)
+Etapa 4: Fotos e Proprietario
+- Upload multiplo de fotos
+- Galeria com preview
+- Definir foto de capa
+- Dados do proprietario
 ```
 
-## Fases de Implementacao
+### 1.2 Componentes a Criar
 
-### Fase 1: Infraestrutura Base
-1. Configurar Vite corretamente
-2. Instalar dependencias (shadcn/ui, react-router, tanstack-query, etc)
-3. Configurar tema e design system
-4. Criar layout principal com sidebar
+**Arquivos novos:**
+- `src/components/properties/PropertyForm.tsx` - Formulario principal multi-step
+- `src/components/properties/PropertyFormStep1.tsx` - Informacoes basicas
+- `src/components/properties/PropertyFormStep2.tsx` - Localizacao
+- `src/components/properties/PropertyFormStep3.tsx` - Caracteristicas
+- `src/components/properties/PropertyFormStep4.tsx` - Fotos e proprietario
+- `src/components/properties/PhotoUploader.tsx` - Upload de fotos com drag-drop
+- `src/components/properties/PhotoGallery.tsx` - Galeria com reordenacao
+- `src/components/properties/PropertyCard.tsx` - Card para listagem
+- `src/components/properties/PropertyFilters.tsx` - Filtros de busca
+- `src/hooks/useProperties.ts` - Hook com queries e mutations
+- `src/hooks/usePropertyPhotos.ts` - Hook para upload de fotos
+- `src/pages/properties/NewPropertyPage.tsx` - Pagina de novo imovel
+- `src/pages/properties/PropertyDetailsPage.tsx` - Detalhes do imovel
 
-### Fase 2: Autenticacao
-1. Tabela profiles com trigger automatico
-2. Tabela user_roles (separada - seguranca)
-3. Paginas de login/registro
-4. Contexto de autenticacao
-5. Rotas protegidas
+**Componentes UI necessarios:**
+- `src/components/ui/dialog.tsx` - Modal
+- `src/components/ui/select.tsx` - Select dropdown
+- `src/components/ui/textarea.tsx` - Textarea
+- `src/components/ui/tabs.tsx` - Tabs
+- `src/components/ui/progress.tsx` - Barra de progresso
+- `src/components/ui/badge.tsx` - Badges de status
 
-### Fase 3: Banco de Dados
-1. Criar todas as tabelas via migracoes
-2. Configurar RLS (Row Level Security)
-3. Criar funcoes auxiliares
-4. Seeds com dados de exemplo
+### 1.3 Supabase Storage
 
-### Fase 4: Modulo de Imoveis
-1. Listagem com filtros e busca
-2. Formulario de cadastro multi-step
-3. Upload de fotos para Supabase Storage
-4. Visualizacao de detalhes
-5. Edicao e exclusao
+**Migracao SQL necessaria:**
+```sql
+-- Criar bucket para fotos de imoveis
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('property-photos', 'property-photos', true);
 
-### Fase 5: Modulo de Locacao
-1. Listagem de contratos
-2. Formulario de novo contrato
-3. Cadastro de partes (locatario, locador, fiador)
-4. Geracao de mensalidades
-5. Controle de pagamentos
+-- Politica para usuarios autenticados fazerem upload
+CREATE POLICY "Users can upload photos"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'property-photos');
 
-### Fase 6: CRM
-1. Listagem e cadastro de leads
-2. Funil de vendas visual
-3. Propostas
-4. Atendimento ao cliente
+-- Politica para visualizacao publica
+CREATE POLICY "Public can view photos"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'property-photos');
 
-### Fase 7: Dashboard
-1. Cards com metricas
-2. Graficos
-3. Listagens rapidas
-4. Notificacoes
+-- Politica para usuarios deletarem suas fotos
+CREATE POLICY "Users can delete own photos"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (bucket_id = 'property-photos');
+```
 
-## Tecnologias e Bibliotecas
+### 1.4 Fluxo de Upload de Fotos
 
-- React 18 + TypeScript
-- Vite (build tool)
-- Tailwind CSS
-- shadcn/ui (componentes)
-- React Router DOM (rotas)
-- TanStack Query (data fetching)
-- React Hook Form + Zod (formularios)
-- Recharts (graficos)
-- date-fns (datas)
-- Supabase JS SDK
+```text
+1. Usuario seleciona arquivos (max 10 por vez)
+2. Preview local das imagens
+3. Ao salvar, upload para Supabase Storage
+4. URL salva na tabela property_photos
+5. Reordenacao via drag-drop
+6. Definir foto de capa
+```
 
-## Seguranca
+---
 
-- RLS em todas as tabelas
-- Roles em tabela separada (prevenir privilege escalation)
-- Validacao client-side e server-side
-- Autenticacao via Supabase Auth
-- Storage policies para arquivos
+## Parte 2: Funil de Vendas Visual (Leads)
 
-## Status de Implementacao
+### 2.1 Estrutura do Funil
 
-### ✅ Fase 1: Infraestrutura Base - CONCLUÍDA
-- [x] vite.config.ts configurado
-- [x] Dependencias instaladas (shadcn/ui, react-router, tanstack-query, etc)
-- [x] Design system configurado (tailwind.config.ts, index.css)
-- [x] Layout principal com sidebar responsiva
+O funil tera colunas baseadas no status do lead (enum `lead_status`):
 
-### ✅ Fase 2: Autenticacao - CONCLUÍDA
-- [x] Tabela profiles com trigger automatico
-- [x] Tabela user_roles (separada - seguranca)
-- [x] Paginas de login/registro
-- [x] Contexto de autenticacao (AuthContext)
-- [x] Rotas protegidas
+```text
+NOVO -> CONTACTADO -> QUALIFICADO -> PROPOSTA -> NEGOCIACAO -> FECHADO -> PERDIDO
+```
 
-### ✅ Fase 3: Banco de Dados - CONCLUÍDA
-- [x] Todas as tabelas criadas via migracao
-- [x] RLS configurado em todas as tabelas
-- [x] Funcoes auxiliares (has_role, get_user_real_estate_id)
-- [x] Triggers de updated_at e criacao de profile
+### 2.2 Componentes a Criar
 
-### 🔲 Proximo Passo
-Para comecar a usar o sistema:
-1. Crie uma conta no login
-2. Acesse o Supabase e associe seu usuario a uma imobiliaria (real_estate)
+**Arquivos novos:**
+- `src/components/leads/LeadsFunnel.tsx` - Funil principal com colunas
+- `src/components/leads/LeadColumn.tsx` - Coluna do funil
+- `src/components/leads/LeadCard.tsx` - Card do lead (draggable)
+- `src/components/leads/LeadForm.tsx` - Formulario de lead
+- `src/components/leads/LeadDetails.tsx` - Modal com detalhes
+- `src/hooks/useLeads.ts` - Hook com queries e mutations
+
+### 2.3 Implementacao Drag-and-Drop
+
+Usaremos a API nativa do HTML5 (sem biblioteca externa) para manter o bundle leve:
+
+```text
+Funcionalidades:
+- Arrastar cards entre colunas
+- Indicador visual de drop zone
+- Animacao suave de transicao
+- Atualizacao otimista no estado
+- Sincronizacao com Supabase
+```
+
+### 2.4 Filtros e Busca
+
+```text
+- Busca por nome, email, telefone
+- Filtro por tipo de interesse (venda/locacao)
+- Filtro por tipo de imovel
+- Filtro por responsavel
+- Ordenacao por data
+```
+
+---
+
+## Rotas a Adicionar
+
+```text
+/imoveis                 - Listagem de imoveis
+/imoveis/novo            - Formulario de novo imovel
+/imoveis/:id             - Detalhes do imovel
+/imoveis/:id/editar      - Editar imovel
+
+/leads                   - Funil de vendas
+/leads/novo              - Modal de novo lead
+/leads/:id               - Modal de detalhes
+```
+
+---
+
+## Secao Tecnica
+
+### Validacao com Zod
+
+```typescript
+// Schema de validacao do imovel
+const propertySchema = z.object({
+  title: z.string().min(3, "Titulo obrigatorio"),
+  purpose: z.enum(["venda", "locacao", "ambos"]),
+  status: z.enum(["disponivel", "vendido", "locado", "reservado"]),
+  property_type_id: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zip_code: z.string().optional(),
+  bedrooms: z.number().min(0).optional(),
+  sale_price: z.number().positive().optional(),
+  rent_price: z.number().positive().optional(),
+});
+
+// Schema de validacao do lead
+const leadSchema = z.object({
+  name: z.string().min(2, "Nome obrigatorio"),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+  interest_type: z.enum(["venda", "locacao", "ambos"]).optional(),
+  budget_min: z.number().positive().optional(),
+  budget_max: z.number().positive().optional(),
+});
+```
+
+### TanStack Query Hooks
+
+```typescript
+// useProperties.ts
+- useProperties() - Lista imoveis com filtros
+- useProperty(id) - Busca imovel por ID
+- useCreateProperty() - Mutation para criar
+- useUpdateProperty() - Mutation para atualizar
+- useDeleteProperty() - Mutation para deletar
+
+// useLeads.ts
+- useLeads() - Lista leads
+- useLeadsByStatus() - Agrupa por status (funil)
+- useCreateLead() - Mutation para criar
+- useUpdateLeadStatus() - Mutation para mover no funil
+```
+
+### Upload de Fotos
+
+```typescript
+// usePropertyPhotos.ts
+async function uploadPhoto(file: File, propertyId: string) {
+  const fileName = `${propertyId}/${Date.now()}-${file.name}`;
+  
+  const { data, error } = await supabase.storage
+    .from('property-photos')
+    .upload(fileName, file);
+    
+  if (error) throw error;
+  
+  const { data: { publicUrl } } = supabase.storage
+    .from('property-photos')
+    .getPublicUrl(fileName);
+    
+  // Salvar referencia na tabela property_photos
+  await supabase.from('property_photos').insert({
+    property_id: propertyId,
+    url: publicUrl,
+    order_index: 0,
+  });
+}
+```
+
+---
+
+## Ordem de Implementacao
+
+1. Adicionar script `build:dev` ao package.json (usuario)
+2. Criar bucket `property-photos` no Supabase Storage
+3. Criar componentes UI faltantes (dialog, select, textarea, etc)
+4. Implementar hooks `useProperties` e `usePropertyPhotos`
+5. Criar formulario multi-step de imoveis
+6. Implementar upload de fotos com galeria
+7. Atualizar pagina de listagem de imoveis
+8. Implementar hook `useLeads`
+9. Criar componentes do funil de vendas
+10. Implementar drag-and-drop entre colunas
+11. Criar formulario de leads
+12. Adicionar rotas no App.tsx
+13. Testar fluxos completos
+
+---
+
+## Resultado Final
+
+Apos implementacao:
+- Formulario completo de 4 etapas para cadastrar imoveis
+- Upload de ate 10 fotos por imovel com galeria visual
+- Busca automatica de CEP
+- Funil de vendas Kanban com 7 colunas
+- Drag-and-drop para mover leads entre etapas
+- Filtros e busca em ambos os modulos
+- Integracao completa com Supabase
+
