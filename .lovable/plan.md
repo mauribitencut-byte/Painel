@@ -1,180 +1,102 @@
 
 
-# Plano: Formulario de Imoveis + Funil de Vendas
+# Plano: Formulario de Cadastro de Imoveis com Upload de Fotos
 
-## Visao Geral
+## Resumo
 
-Este plano implementa duas funcionalidades principais do CRM imobiliario:
-1. **Formulario completo de cadastro de imoveis** com upload de fotos para Supabase Storage
-2. **Funil de vendas visual** com drag-and-drop para gerenciamento de leads
+Implementar um formulario completo de 4 etapas para cadastro de imoveis, com upload de fotos para o Supabase Storage, listagem com filtros e cards visuais.
 
-## Pre-requisito Critico
+---
 
-Antes de implementar, o usuario precisa adicionar o script `build:dev` ao `package.json`:
-```json
-{
-  "scripts": {
-    "build:dev": "vite build --mode development"
-  }
-}
+## O Que Sera Criado
+
+### Formulario Multi-Step (4 Etapas)
+
+**Etapa 1 - Informacoes Basicas:**
+- Titulo do imovel
+- Codigo de referencia
+- Tipo de imovel (Apartamento, Casa, Comercial, Terreno)
+- Finalidade (Venda, Locacao, Ambos)
+- Status (Disponivel, Vendido, Locado, Reservado, Inativo)
+- Descricao detalhada
+
+**Etapa 2 - Localizacao:**
+- CEP com busca automatica (API ViaCEP)
+- Endereco, numero e complemento
+- Bairro, cidade e estado
+- Preenchimento automatico ao digitar o CEP
+
+**Etapa 3 - Caracteristicas e Valores:**
+- Area total e util (m2)
+- Quartos, suites, banheiros, vagas
+- Preco de venda e aluguel
+- Taxa de condominio e IPTU
+
+**Etapa 4 - Fotos e Proprietario:**
+- Upload de ate 10 fotos
+- Galeria com preview das imagens
+- Opcao para definir foto de capa
+- Dados do proprietario (nome, telefone, email)
+
+### Listagem de Imoveis
+
+- Cards visuais com foto de capa
+- Informacoes principais (titulo, preco, localizacao)
+- Filtros por tipo, finalidade e status
+- Busca por texto
+- Link para cadastrar novo imovel
+
+---
+
+## Arquivos a Criar
+
+```text
+src/hooks/
+  useProperties.ts          - Queries e mutations para imoveis
+  usePropertyPhotos.ts      - Upload de fotos para Storage
+  usePropertyTypes.ts       - Lista tipos de imoveis
+
+src/components/ui/
+  dialog.tsx                - Modal
+  select.tsx                - Dropdown select
+  textarea.tsx              - Campo de texto longo
+  progress.tsx              - Barra de progresso
+  badge.tsx                 - Badges de status
+
+src/components/properties/
+  PropertyForm.tsx          - Formulario principal multi-step
+  PropertyFormStep1.tsx     - Etapa 1: Informacoes basicas
+  PropertyFormStep2.tsx     - Etapa 2: Localizacao
+  PropertyFormStep3.tsx     - Etapa 3: Caracteristicas
+  PropertyFormStep4.tsx     - Etapa 4: Fotos e proprietario
+  PhotoUploader.tsx         - Upload de fotos com drag-drop
+  PhotoGallery.tsx          - Galeria com preview
+  PropertyCard.tsx          - Card para listagem
+  PropertyFilters.tsx       - Filtros de busca
 ```
 
 ---
 
-## Parte 1: Formulario de Cadastro de Imoveis
-
-### 1.1 Estrutura Multi-Step (Wizard)
-
-O formulario sera dividido em 4 etapas para melhor usabilidade:
+## Fluxo de Navegacao
 
 ```text
-Etapa 1: Informacoes Basicas
-- Titulo, codigo, tipo de imovel
-- Finalidade (venda/locacao/ambos)
-- Status (disponivel/vendido/locado/reservado)
-- Descricao
-
-Etapa 2: Localizacao
-- CEP (com busca automatica)
-- Endereco, numero, complemento
-- Bairro, cidade, estado
-
-Etapa 3: Caracteristicas
-- Area total e util
-- Quartos, suites, banheiros
-- Vagas de garagem
-- Preco venda/aluguel
-- Condominio, IPTU
-
-Etapa 4: Fotos e Proprietario
-- Upload multiplo de fotos
-- Galeria com preview
-- Definir foto de capa
-- Dados do proprietario
-```
-
-### 1.2 Componentes a Criar
-
-**Arquivos novos:**
-- `src/components/properties/PropertyForm.tsx` - Formulario principal multi-step
-- `src/components/properties/PropertyFormStep1.tsx` - Informacoes basicas
-- `src/components/properties/PropertyFormStep2.tsx` - Localizacao
-- `src/components/properties/PropertyFormStep3.tsx` - Caracteristicas
-- `src/components/properties/PropertyFormStep4.tsx` - Fotos e proprietario
-- `src/components/properties/PhotoUploader.tsx` - Upload de fotos com drag-drop
-- `src/components/properties/PhotoGallery.tsx` - Galeria com reordenacao
-- `src/components/properties/PropertyCard.tsx` - Card para listagem
-- `src/components/properties/PropertyFilters.tsx` - Filtros de busca
-- `src/hooks/useProperties.ts` - Hook com queries e mutations
-- `src/hooks/usePropertyPhotos.ts` - Hook para upload de fotos
-- `src/pages/properties/NewPropertyPage.tsx` - Pagina de novo imovel
-- `src/pages/properties/PropertyDetailsPage.tsx` - Detalhes do imovel
-
-**Componentes UI necessarios:**
-- `src/components/ui/dialog.tsx` - Modal
-- `src/components/ui/select.tsx` - Select dropdown
-- `src/components/ui/textarea.tsx` - Textarea
-- `src/components/ui/tabs.tsx` - Tabs
-- `src/components/ui/progress.tsx` - Barra de progresso
-- `src/components/ui/badge.tsx` - Badges de status
-
-### 1.3 Supabase Storage
-
-**Migracao SQL necessaria:**
-```sql
--- Criar bucket para fotos de imoveis
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('property-photos', 'property-photos', true);
-
--- Politica para usuarios autenticados fazerem upload
-CREATE POLICY "Users can upload photos"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'property-photos');
-
--- Politica para visualizacao publica
-CREATE POLICY "Public can view photos"
-ON storage.objects FOR SELECT
-TO public
-USING (bucket_id = 'property-photos');
-
--- Politica para usuarios deletarem suas fotos
-CREATE POLICY "Users can delete own photos"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (bucket_id = 'property-photos');
-```
-
-### 1.4 Fluxo de Upload de Fotos
-
-```text
-1. Usuario seleciona arquivos (max 10 por vez)
-2. Preview local das imagens
-3. Ao salvar, upload para Supabase Storage
-4. URL salva na tabela property_photos
-5. Reordenacao via drag-drop
-6. Definir foto de capa
+/imoveis           -> Lista de imoveis
+    [+] Novo Imovel -> Abre modal com formulario 4 etapas
+    [Card] Clique   -> Abre detalhes/edicao
 ```
 
 ---
 
-## Parte 2: Funil de Vendas Visual (Leads)
+## Recursos do Banco Utilizados
 
-### 2.1 Estrutura do Funil
+O banco ja possui toda a estrutura necessaria:
 
-O funil tera colunas baseadas no status do lead (enum `lead_status`):
-
-```text
-NOVO -> CONTACTADO -> QUALIFICADO -> PROPOSTA -> NEGOCIACAO -> FECHADO -> PERDIDO
-```
-
-### 2.2 Componentes a Criar
-
-**Arquivos novos:**
-- `src/components/leads/LeadsFunnel.tsx` - Funil principal com colunas
-- `src/components/leads/LeadColumn.tsx` - Coluna do funil
-- `src/components/leads/LeadCard.tsx` - Card do lead (draggable)
-- `src/components/leads/LeadForm.tsx` - Formulario de lead
-- `src/components/leads/LeadDetails.tsx` - Modal com detalhes
-- `src/hooks/useLeads.ts` - Hook com queries e mutations
-
-### 2.3 Implementacao Drag-and-Drop
-
-Usaremos a API nativa do HTML5 (sem biblioteca externa) para manter o bundle leve:
-
-```text
-Funcionalidades:
-- Arrastar cards entre colunas
-- Indicador visual de drop zone
-- Animacao suave de transicao
-- Atualizacao otimista no estado
-- Sincronizacao com Supabase
-```
-
-### 2.4 Filtros e Busca
-
-```text
-- Busca por nome, email, telefone
-- Filtro por tipo de interesse (venda/locacao)
-- Filtro por tipo de imovel
-- Filtro por responsavel
-- Ordenacao por data
-```
-
----
-
-## Rotas a Adicionar
-
-```text
-/imoveis                 - Listagem de imoveis
-/imoveis/novo            - Formulario de novo imovel
-/imoveis/:id             - Detalhes do imovel
-/imoveis/:id/editar      - Editar imovel
-
-/leads                   - Funil de vendas
-/leads/novo              - Modal de novo lead
-/leads/:id               - Modal de detalhes
-```
+- **Tabela `properties`**: 30+ campos incluindo titulo, endereco, precos, caracteristicas, dados do proprietario
+- **Tabela `property_photos`**: url, is_cover, order_index, property_id
+- **Tabela `property_types`**: Apartamento, Casa, Comercial, Terreno
+- **Bucket `property-photos`**: Storage publico para fotos
+- **Enums**: property_purpose (venda/locacao/ambos), property_status (disponivel/vendido/locado/reservado/inativo)
+- **RLS**: Politicas ja configuradas para usuarios autenticados
 
 ---
 
@@ -183,53 +105,18 @@ Funcionalidades:
 ### Validacao com Zod
 
 ```typescript
-// Schema de validacao do imovel
 const propertySchema = z.object({
   title: z.string().min(3, "Titulo obrigatorio"),
   purpose: z.enum(["venda", "locacao", "ambos"]),
-  status: z.enum(["disponivel", "vendido", "locado", "reservado"]),
+  status: z.enum(["disponivel", "vendido", "locado", "reservado", "inativo"]),
   property_type_id: z.string().optional(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  zip_code: z.string().optional(),
-  bedrooms: z.number().min(0).optional(),
-  sale_price: z.number().positive().optional(),
-  rent_price: z.number().positive().optional(),
-});
-
-// Schema de validacao do lead
-const leadSchema = z.object({
-  name: z.string().min(2, "Nome obrigatorio"),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  interest_type: z.enum(["venda", "locacao", "ambos"]).optional(),
-  budget_min: z.number().positive().optional(),
-  budget_max: z.number().positive().optional(),
+  // ... demais campos
 });
 ```
 
-### TanStack Query Hooks
+### Upload de Fotos para Storage
 
 ```typescript
-// useProperties.ts
-- useProperties() - Lista imoveis com filtros
-- useProperty(id) - Busca imovel por ID
-- useCreateProperty() - Mutation para criar
-- useUpdateProperty() - Mutation para atualizar
-- useDeleteProperty() - Mutation para deletar
-
-// useLeads.ts
-- useLeads() - Lista leads
-- useLeadsByStatus() - Agrupa por status (funil)
-- useCreateLead() - Mutation para criar
-- useUpdateLeadStatus() - Mutation para mover no funil
-```
-
-### Upload de Fotos
-
-```typescript
-// usePropertyPhotos.ts
 async function uploadPhoto(file: File, propertyId: string) {
   const fileName = `${propertyId}/${Date.now()}-${file.name}`;
   
@@ -237,18 +124,48 @@ async function uploadPhoto(file: File, propertyId: string) {
     .from('property-photos')
     .upload(fileName, file);
     
-  if (error) throw error;
-  
   const { data: { publicUrl } } = supabase.storage
     .from('property-photos')
     .getPublicUrl(fileName);
     
-  // Salvar referencia na tabela property_photos
   await supabase.from('property_photos').insert({
     property_id: propertyId,
     url: publicUrl,
+    is_cover: false,
     order_index: 0,
   });
+}
+```
+
+### TanStack Query Hooks
+
+```typescript
+// useProperties.ts
+useProperties(filters)      // Lista com filtros
+useProperty(id)            // Busca por ID
+useCreateProperty()        // Mutation criar
+useUpdateProperty()        // Mutation atualizar
+useDeleteProperty()        // Mutation deletar
+
+// usePropertyPhotos.ts
+usePropertyPhotos(propertyId)  // Lista fotos
+useUploadPhoto()               // Upload para Storage
+useDeletePhoto()               // Remove foto
+useSetCoverPhoto()             // Define capa
+```
+
+### Busca de CEP (ViaCEP)
+
+```typescript
+async function fetchAddress(cep: string) {
+  const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+  const data = await response.json();
+  return {
+    address: data.logradouro,
+    neighborhood: data.bairro,
+    city: data.localidade,
+    state: data.uf,
+  };
 }
 ```
 
@@ -256,30 +173,24 @@ async function uploadPhoto(file: File, propertyId: string) {
 
 ## Ordem de Implementacao
 
-1. Adicionar script `build:dev` ao package.json (usuario)
-2. Criar bucket `property-photos` no Supabase Storage
-3. Criar componentes UI faltantes (dialog, select, textarea, etc)
-4. Implementar hooks `useProperties` e `usePropertyPhotos`
-5. Criar formulario multi-step de imoveis
-6. Implementar upload de fotos com galeria
-7. Atualizar pagina de listagem de imoveis
-8. Implementar hook `useLeads`
-9. Criar componentes do funil de vendas
-10. Implementar drag-and-drop entre colunas
-11. Criar formulario de leads
-12. Adicionar rotas no App.tsx
-13. Testar fluxos completos
+1. Criar componentes UI faltantes (dialog, select, textarea, progress, badge)
+2. Criar hooks de dados (useProperties, usePropertyPhotos, usePropertyTypes)
+3. Implementar componentes do formulario (steps 1-4)
+4. Criar PhotoUploader e PhotoGallery
+5. Montar PropertyForm com navegacao entre etapas
+6. Criar PropertyCard e PropertyFilters
+7. Atualizar PropertiesPage com listagem e modal
+8. Adicionar rotas no App.tsx
+9. Testar fluxo completo
 
 ---
 
-## Resultado Final
+## Resultado Esperado
 
-Apos implementacao:
-- Formulario completo de 4 etapas para cadastrar imoveis
-- Upload de ate 10 fotos por imovel com galeria visual
-- Busca automatica de CEP
-- Funil de vendas Kanban com 7 colunas
-- Drag-and-drop para mover leads entre etapas
-- Filtros e busca em ambos os modulos
-- Integracao completa com Supabase
+Ao final:
+- Formulario de 4 etapas funcional com validacao
+- Upload de fotos para Supabase Storage
+- Busca automatica de endereco por CEP
+- Listagem de imoveis com cards e filtros
+- Integracao completa com banco de dados existente
 
