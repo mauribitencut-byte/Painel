@@ -1,19 +1,45 @@
-import { Users, Plus, Search } from "lucide-react";
+import { useState } from "react";
+import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { LeadKanban } from "@/components/crm/LeadKanban";
+import { LeadForm } from "@/components/crm/LeadForm";
+import { useDebounce } from "@/hooks/useDebounce";
 
 export function LeadsPage() {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+
+  const debouncedSearch = useDebounce(search, 300);
+
+  const handleFormSuccess = () => {
+    setIsFormOpen(false);
+    setEditingLeadId(null);
+  };
+
+  const handleLeadClick = (leadId: string) => {
+    setEditingLeadId(leadId);
+    setIsFormOpen(true);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Funil de Vendas</h1>
           <p className="text-muted-foreground">
-            Gerencie seus leads e oportunidades
+            Gerencie seus leads arrastando entre as etapas
           </p>
         </div>
-        <Button>
+        <Button onClick={() => setIsFormOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Novo Lead
         </Button>
@@ -21,32 +47,43 @@ export function LeadsPage() {
 
       {/* Search */}
       <div className="flex flex-col gap-4 md:flex-row">
-        <div className="relative flex-1">
+        <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar leads..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
           />
         </div>
       </div>
 
-      {/* Empty State */}
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-16">
-          <div className="rounded-full bg-muted p-4">
-            <Users className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold">Nenhum lead cadastrado</h3>
-          <p className="mt-2 text-center text-sm text-muted-foreground">
-            Comece cadastrando seu primeiro lead.<br />
-            Configure as tabelas no Supabase primeiro.
-          </p>
-          <Button className="mt-4">
-            <Plus className="mr-2 h-4 w-4" />
-            Cadastrar Lead
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Kanban Board */}
+      <LeadKanban
+        search={debouncedSearch || undefined}
+        onLeadClick={handleLeadClick}
+      />
+
+      {/* Form Dialog */}
+      <Dialog open={isFormOpen} onOpenChange={(open) => {
+        setIsFormOpen(open);
+        if (!open) setEditingLeadId(null);
+      }}>
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingLeadId ? "Editar Lead" : "Novo Lead"}
+            </DialogTitle>
+          </DialogHeader>
+          <LeadForm
+            onSuccess={handleFormSuccess}
+            onCancel={() => {
+              setIsFormOpen(false);
+              setEditingLeadId(null);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
