@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Building2, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import { useProperties } from "@/hooks/useProperties";
 import { useDebounce } from "@/hooks/useDebounce";
 
 export function PropertiesPage() {
+  const navigate = useNavigate();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [propertyTypeId, setPropertyTypeId] = useState("all");
@@ -106,9 +108,7 @@ export function PropertiesPage() {
             <PropertyCard
               key={property.id}
               property={property}
-              onClick={() => {
-                // TODO: Open edit modal or navigate to details
-              }}
+              onClick={() => navigate(`/imoveis/${property.id}`)}
             />
           ))}
         </div>

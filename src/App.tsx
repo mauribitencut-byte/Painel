@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { Dashboard } from "@/pages/Dashboard";
 import { PropertiesPage } from "@/pages/properties/PropertiesPage";
+import { PropertyDetailsPage } from "@/pages/properties/PropertyDetailsPage";
 import { LeadsPage } from "@/pages/crm/LeadsPage";
 import { RentalsPage } from "@/pages/rentals/RentalsPage";
 
@@ -37,6 +38,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/imoveis" element={<PropertiesPage />} />
+                <Route path="/imoveis/:id" element={<PropertyDetailsPage />} />
                 <Route path="/leads" element={<LeadsPage />} />
                 <Route path="/locacoes" element={<RentalsPage />} />
               </Routes>
