@@ -1,196 +1,328 @@
 
+# Plano: Correcao de Build + Funil de Vendas + Detalhes de Imoveis
 
-# Plano: Formulario de Cadastro de Imoveis com Upload de Fotos
+## 1. Correcao Urgente - Erro de Build
 
-## Resumo
+O erro de build ocorre porque o arquivo `postcss.config.js` esta configurado para Tailwind CSS v4, mas o projeto usa Tailwind v3.
 
-Implementar um formulario completo de 4 etapas para cadastro de imoveis, com upload de fotos para o Supabase Storage, listagem com filtros e cards visuais.
+### Arquivo a Corrigir
 
----
+```javascript
+// postcss.config.js - ATUAL (incorreto)
+export default {
+  plugins: {
+    "@tailwindcss/postcss": {},  // Tailwind v4
+    autoprefixer: {},
+  },
+};
 
-## O Que Sera Criado
-
-### Formulario Multi-Step (4 Etapas)
-
-**Etapa 1 - Informacoes Basicas:**
-- Titulo do imovel
-- Codigo de referencia
-- Tipo de imovel (Apartamento, Casa, Comercial, Terreno)
-- Finalidade (Venda, Locacao, Ambos)
-- Status (Disponivel, Vendido, Locado, Reservado, Inativo)
-- Descricao detalhada
-
-**Etapa 2 - Localizacao:**
-- CEP com busca automatica (API ViaCEP)
-- Endereco, numero e complemento
-- Bairro, cidade e estado
-- Preenchimento automatico ao digitar o CEP
-
-**Etapa 3 - Caracteristicas e Valores:**
-- Area total e util (m2)
-- Quartos, suites, banheiros, vagas
-- Preco de venda e aluguel
-- Taxa de condominio e IPTU
-
-**Etapa 4 - Fotos e Proprietario:**
-- Upload de ate 10 fotos
-- Galeria com preview das imagens
-- Opcao para definir foto de capa
-- Dados do proprietario (nome, telefone, email)
-
-### Listagem de Imoveis
-
-- Cards visuais com foto de capa
-- Informacoes principais (titulo, preco, localizacao)
-- Filtros por tipo, finalidade e status
-- Busca por texto
-- Link para cadastrar novo imovel
+// postcss.config.js - CORRIGIDO
+export default {
+  plugins: {
+    tailwindcss: {},  // Tailwind v3
+    autoprefixer: {},
+  },
+};
+```
 
 ---
 
-## Arquivos a Criar
+## 2. Funil de Vendas com Drag-and-Drop
+
+### Visao Geral
+
+Um quadro Kanban visual onde os leads sao organizados em colunas por status, permitindo arrastar cards entre colunas para atualizar o status.
+
+### Colunas do Funil (baseado no enum lead_status)
+
+| Coluna | Status | Cor |
+|--------|--------|-----|
+| Novos | novo | Azul |
+| Em Atendimento | em_atendimento | Amarelo |
+| Qualificados | qualificado | Verde |
+| Proposta | proposta | Roxo |
+| Fechados | fechado | Verde escuro |
+| Perdidos | perdido | Vermelho |
+
+### Arquivos a Criar
 
 ```text
 src/hooks/
-  useProperties.ts          - Queries e mutations para imoveis
-  usePropertyPhotos.ts      - Upload de fotos para Storage
-  usePropertyTypes.ts       - Lista tipos de imoveis
+  useLeads.ts              - CRUD de leads com TanStack Query
 
-src/components/ui/
-  dialog.tsx                - Modal
-  select.tsx                - Dropdown select
-  textarea.tsx              - Campo de texto longo
-  progress.tsx              - Barra de progresso
-  badge.tsx                 - Badges de status
-
-src/components/properties/
-  PropertyForm.tsx          - Formulario principal multi-step
-  PropertyFormStep1.tsx     - Etapa 1: Informacoes basicas
-  PropertyFormStep2.tsx     - Etapa 2: Localizacao
-  PropertyFormStep3.tsx     - Etapa 3: Caracteristicas
-  PropertyFormStep4.tsx     - Etapa 4: Fotos e proprietario
-  PhotoUploader.tsx         - Upload de fotos com drag-drop
-  PhotoGallery.tsx          - Galeria com preview
-  PropertyCard.tsx          - Card para listagem
-  PropertyFilters.tsx       - Filtros de busca
+src/components/crm/
+  LeadKanban.tsx           - Container do Kanban
+  LeadColumn.tsx           - Coluna individual
+  LeadCard.tsx             - Card do lead (arrastravel)
+  LeadForm.tsx             - Formulario de cadastro/edicao
+  LeadFilters.tsx          - Filtros de busca
 ```
 
----
-
-## Fluxo de Navegacao
+### Fluxo de Interacao
 
 ```text
-/imoveis           -> Lista de imoveis
-    [+] Novo Imovel -> Abre modal com formulario 4 etapas
-    [Card] Clique   -> Abre detalhes/edicao
+Usuario arrasta card
+    |
+    v
+onDragStart -> salva lead_id e status original
+    |
+    v
+onDragOver -> destaca coluna destino
+    |
+    v
+onDrop -> identifica nova coluna
+    |
+    v
+Mutation -> atualiza lead.status no banco
+    |
+    v
+Invalidate query -> recarrega lista
+```
+
+### Implementacao Drag-and-Drop Nativo
+
+```typescript
+// LeadCard.tsx
+<div
+  draggable
+  onDragStart={(e) => {
+    e.dataTransfer.setData("leadId", lead.id);
+    e.dataTransfer.setData("fromStatus", lead.status);
+  }}
+>
+  {/* Card content */}
+</div>
+
+// LeadColumn.tsx
+<div
+  onDragOver={(e) => e.preventDefault()}
+  onDrop={(e) => {
+    const leadId = e.dataTransfer.getData("leadId");
+    updateLeadStatus({ id: leadId, status: columnStatus });
+  }}
+>
+  {leads.map(lead => <LeadCard key={lead.id} lead={lead} />)}
+</div>
 ```
 
 ---
 
-## Recursos do Banco Utilizados
+## 3. Pagina de Detalhes do Imovel
 
-O banco ja possui toda a estrutura necessaria:
+### Rota Nova
 
-- **Tabela `properties`**: 30+ campos incluindo titulo, endereco, precos, caracteristicas, dados do proprietario
-- **Tabela `property_photos`**: url, is_cover, order_index, property_id
-- **Tabela `property_types`**: Apartamento, Casa, Comercial, Terreno
-- **Bucket `property-photos`**: Storage publico para fotos
-- **Enums**: property_purpose (venda/locacao/ambos), property_status (disponivel/vendido/locado/reservado/inativo)
-- **RLS**: Politicas ja configuradas para usuarios autenticados
+```text
+/imoveis/:id -> PropertyDetailsPage
+```
+
+### Layout da Pagina
+
+```text
++--------------------------------------------------+
+|  [Voltar]                      [Editar] [Excluir] |
++--------------------------------------------------+
+|                                                   |
+|  +---------------------+  +--------------------+  |
+|  |                     |  | Titulo             |  |
+|  |   Galeria de Fotos  |  | Tipo | Status      |  |
+|  |   (carrossel)       |  | Preco              |  |
+|  |                     |  +--------------------+  |
+|  +---------------------+  | Endereco           |  |
+|                           | Mapa               |  |
+|  +--------------------+   +--------------------+  |
+|  | Thumbnails         |   | Caracteristicas    |  |
+|  +--------------------+   | - Quartos          |  |
+|                           | - Banheiros        |  |
+|  +--------------------+   | - Vagas            |  |
+|  | Descricao          |   +--------------------+  |
+|  |                    |   | Proprietario       |  |
+|  +--------------------+   | Nome | Tel | Email |  |
++--------------------------------------------------+
+```
+
+### Arquivos a Criar
+
+```text
+src/pages/properties/
+  PropertyDetailsPage.tsx   - Pagina de detalhes
+
+src/components/properties/
+  PropertyGallery.tsx       - Galeria com thumbnails
+  PropertyInfo.tsx          - Informacoes principais
+  PropertyFeatures.tsx      - Caracteristicas
+  PropertyOwner.tsx         - Dados do proprietario
+```
 
 ---
 
-## Secao Tecnica
+## 4. Edicao de Imoveis
 
-### Validacao com Zod
+### Comportamento
+
+1. Clicar no card da lista -> abre pagina de detalhes
+2. Clicar em "Editar" -> abre modal com formulario preenchido
+3. Formulario reutiliza os mesmos componentes (PropertyFormStep1-4)
+4. Ao salvar, usa mutation `useUpdateProperty`
+
+### Alteracoes no PropertyForm
 
 ```typescript
-const propertySchema = z.object({
-  title: z.string().min(3, "Titulo obrigatorio"),
-  purpose: z.enum(["venda", "locacao", "ambos"]),
-  status: z.enum(["disponivel", "vendido", "locado", "reservado", "inativo"]),
-  property_type_id: z.string().optional(),
-  // ... demais campos
+interface PropertyFormProps {
+  property?: Property;  // Se existir, e edicao
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+// Preencher valores iniciais
+const form = useForm({
+  defaultValues: property ? {
+    title: property.title,
+    code: property.code,
+    // ... demais campos
+  } : defaultValues
 });
+
+// Usar mutation correta
+const mutation = property 
+  ? useUpdateProperty() 
+  : useCreateProperty();
 ```
 
-### Upload de Fotos para Storage
+---
+
+## 5. Ordem de Implementacao
+
+### Fase 1 - Correcao Urgente
+1. Corrigir postcss.config.js
+
+### Fase 2 - Funil de Vendas
+2. Criar useLeads.ts com queries e mutations
+3. Criar LeadCard.tsx com drag-and-drop
+4. Criar LeadColumn.tsx como drop target
+5. Criar LeadKanban.tsx orquestrando colunas
+6. Criar LeadForm.tsx para cadastro
+7. Atualizar LeadsPage.tsx com Kanban
+
+### Fase 3 - Detalhes e Edicao
+8. Criar PropertyDetailsPage.tsx
+9. Criar PropertyGallery.tsx
+10. Adicionar rota /imoveis/:id
+11. Modificar PropertyForm para suportar edicao
+12. Conectar click do card a pagina de detalhes
+
+---
+
+## 6. Secao Tecnica
+
+### Hook useLeads
 
 ```typescript
-async function uploadPhoto(file: File, propertyId: string) {
-  const fileName = `${propertyId}/${Date.now()}-${file.name}`;
-  
-  const { data, error } = await supabase.storage
-    .from('property-photos')
-    .upload(fileName, file);
-    
-  const { data: { publicUrl } } = supabase.storage
-    .from('property-photos')
-    .getPublicUrl(fileName);
-    
-  await supabase.from('property_photos').insert({
-    property_id: propertyId,
-    url: publicUrl,
-    is_cover: false,
-    order_index: 0,
+export function useLeads(filters?: LeadFilters) {
+  return useQuery({
+    queryKey: ["leads", filters],
+    queryFn: async () => {
+      let query = supabase
+        .from("leads")
+        .select(`
+          *,
+          property_type:property_types(id, name),
+          assigned_to_user:profiles!leads_assigned_to_fkey(full_name)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (filters?.status) {
+        query = query.eq("status", filters.status);
+      }
+      if (filters?.search) {
+        query = query.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useUpdateLeadStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: LeadStatus }) => {
+      const { data, error } = await supabase
+        .from("leads")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+    },
   });
 }
 ```
 
-### TanStack Query Hooks
+### Lead Status Type
 
 ```typescript
-// useProperties.ts
-useProperties(filters)      // Lista com filtros
-useProperty(id)            // Busca por ID
-useCreateProperty()        // Mutation criar
-useUpdateProperty()        // Mutation atualizar
-useDeleteProperty()        // Mutation deletar
+type LeadStatus = 
+  | "novo" 
+  | "em_atendimento" 
+  | "qualificado" 
+  | "proposta" 
+  | "fechado" 
+  | "perdido";
 
-// usePropertyPhotos.ts
-usePropertyPhotos(propertyId)  // Lista fotos
-useUploadPhoto()               // Upload para Storage
-useDeletePhoto()               // Remove foto
-useSetCoverPhoto()             // Define capa
+const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
+  novo: { label: "Novo", color: "bg-blue-500" },
+  em_atendimento: { label: "Em Atendimento", color: "bg-yellow-500" },
+  qualificado: { label: "Qualificado", color: "bg-green-500" },
+  proposta: { label: "Proposta", color: "bg-purple-500" },
+  fechado: { label: "Fechado", color: "bg-emerald-600" },
+  perdido: { label: "Perdido", color: "bg-red-500" },
+};
 ```
 
-### Busca de CEP (ViaCEP)
+### Drag-and-Drop Events
 
 ```typescript
-async function fetchAddress(cep: string) {
-  const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-  const data = await response.json();
-  return {
-    address: data.logradouro,
-    neighborhood: data.bairro,
-    city: data.localidade,
-    state: data.uf,
-  };
-}
+// Estado de drag global
+const [draggedLead, setDraggedLead] = useState<string | null>(null);
+const [dropTarget, setDropTarget] = useState<LeadStatus | null>(null);
+
+// Handlers
+const handleDragStart = (e: DragEvent, leadId: string) => {
+  e.dataTransfer.effectAllowed = "move";
+  setDraggedLead(leadId);
+};
+
+const handleDragOver = (e: DragEvent, status: LeadStatus) => {
+  e.preventDefault();
+  setDropTarget(status);
+};
+
+const handleDrop = (e: DragEvent, newStatus: LeadStatus) => {
+  e.preventDefault();
+  if (draggedLead) {
+    updateStatus.mutate({ id: draggedLead, status: newStatus });
+  }
+  setDraggedLead(null);
+  setDropTarget(null);
+};
 ```
 
 ---
 
-## Ordem de Implementacao
+## 7. Resultado Esperado
 
-1. Criar componentes UI faltantes (dialog, select, textarea, progress, badge)
-2. Criar hooks de dados (useProperties, usePropertyPhotos, usePropertyTypes)
-3. Implementar componentes do formulario (steps 1-4)
-4. Criar PhotoUploader e PhotoGallery
-5. Montar PropertyForm com navegacao entre etapas
-6. Criar PropertyCard e PropertyFilters
-7. Atualizar PropertiesPage com listagem e modal
-8. Adicionar rotas no App.tsx
-9. Testar fluxo completo
+Ao final da implementacao:
 
----
-
-## Resultado Esperado
-
-Ao final:
-- Formulario de 4 etapas funcional com validacao
-- Upload de fotos para Supabase Storage
-- Busca automatica de endereco por CEP
-- Listagem de imoveis com cards e filtros
-- Integracao completa com banco de dados existente
-
+- Build funcionando sem erros
+- Funil de vendas visual com 6 colunas
+- Drag-and-drop para mover leads entre estagios
+- Pagina de detalhes do imovel com galeria de fotos
+- Edicao de imoveis atraves de modal no formulario existente
+- Navegacao entre lista, detalhes e edicao
