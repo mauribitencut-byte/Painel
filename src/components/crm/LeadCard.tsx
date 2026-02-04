@@ -1,6 +1,7 @@
 import { Phone, Mail, DollarSign, GripVertical } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StaleLeadIndicator } from "./StaleLeadIndicator";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface LeadCardProps {
@@ -36,11 +37,14 @@ export function LeadCard({ lead, onDragStart, onClick }: LeadCardProps) {
     >
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{lead.name}</h4>
-            {lead.source && (
-              <p className="text-xs text-muted-foreground">Origem: {lead.source}</p>
-            )}
+          <div className="flex items-center gap-2 min-w-0">
+            <StaleLeadIndicator updatedAt={lead.updated_at} status={lead.status} />
+            <div className="flex-1 min-w-0">
+              <h4 className="font-medium text-sm truncate">{lead.name}</h4>
+              {lead.source && (
+                <p className="text-xs text-muted-foreground">Origem: {lead.source}</p>
+              )}
+            </div>
           </div>
           <GripVertical className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
         </div>

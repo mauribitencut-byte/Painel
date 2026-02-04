@@ -1,5 +1,6 @@
 import { Building2, Users, FileText, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LeadAlerts } from "@/components/crm/LeadAlerts";
 
 const stats = [
   {
@@ -67,6 +68,9 @@ export function Dashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Lead Alerts */}
+      <LeadAlerts />
 
       {/* Quick Actions */}
       <div className="grid gap-4 md:grid-cols-2">

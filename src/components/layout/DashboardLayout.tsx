@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -21,15 +22,17 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useStaleLeadsCount } from "@/hooks/useStaleLeads";
 
 interface NavItemProps {
   to: string;
   icon: ReactNode;
   label: string;
   isActive: boolean;
+  badge?: number;
 }
 
-function NavItem({ to, icon, label, isActive }: NavItemProps) {
+function NavItem({ to, icon, label, isActive, badge }: NavItemProps) {
   return (
     <Link
       to={to}
@@ -41,7 +44,18 @@ function NavItem({ to, icon, label, isActive }: NavItemProps) {
       )}
     >
       {icon}
-      <span>{label}</span>
+      <span className="flex-1">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <Badge 
+          variant="destructive" 
+          className={cn(
+            "ml-auto h-5 min-w-5 px-1.5 text-xs",
+            isActive && "bg-white text-primary"
+          )}
+        >
+          {badge > 99 ? "99+" : badge}
+        </Badge>
+      )}
     </Link>
   );
 }
@@ -57,10 +71,17 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const staleLeadsCount = useStaleLeadsCount();
 
   const getInitials = (email: string) => {
     return email.substring(0, 2).toUpperCase();
   };
+
+  // Add badge count dynamically to leads navigation item
+  const navigationWithBadges = navigation.map((item) => ({
+    ...item,
+    badge: item.to === "/leads" ? staleLeadsCount : undefined,
+  }));
 
   return (
     <div className="flex min-h-screen w-full">
@@ -97,7 +118,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 p-4">
-          {navigation.map((item) => (
+          {navigationWithBadges.map((item) => (
             <NavItem
               key={item.to}
               {...item}
