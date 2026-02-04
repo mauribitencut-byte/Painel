@@ -1,328 +1,248 @@
 
-# Plano: Correcao de Build + Funil de Vendas + Detalhes de Imoveis
+# Plano: Notificacoes e Lembretes para Follow-up de Leads
 
-## 1. Correcao Urgente - Erro de Build
+## Contexto
 
-O erro de build ocorre porque o arquivo `postcss.config.js` esta configurado para Tailwind CSS v4, mas o projeto usa Tailwind v3.
-
-### Arquivo a Corrigir
-
-```javascript
-// postcss.config.js - ATUAL (incorreto)
-export default {
-  plugins: {
-    "@tailwindcss/postcss": {},  // Tailwind v4
-    autoprefixer: {},
-  },
-};
-
-// postcss.config.js - CORRIGIDO
-export default {
-  plugins: {
-    tailwindcss: {},  // Tailwind v3
-    autoprefixer: {},
-  },
-};
-```
+Leads parados em determinados estagios por muito tempo perdem oportunidades de conversao. Este sistema identificara automaticamente leads que precisam de atencao e exibira alertas visuais para a equipe agir.
 
 ---
 
-## 2. Funil de Vendas com Drag-and-Drop
+## O Que Sera Criado
 
-### Visao Geral
+### Indicadores Visuais nos Cards
 
-Um quadro Kanban visual onde os leads sao organizados em colunas por status, permitindo arrastar cards entre colunas para atualizar o status.
+Cada LeadCard mostrara um indicador de tempo parado:
+- Circulos coloridos indicando urgencia
+- Tooltip com tempo exato desde ultima atualizacao
 
-### Colunas do Funil (baseado no enum lead_status)
+| Tempo Parado | Indicador | Cor |
+|--------------|-----------|-----|
+| < 24 horas | Verde | Recente |
+| 1-3 dias | Amarelo | Atencao |
+| 3-7 dias | Laranja | Urgente |
+| > 7 dias | Vermelho | Critico |
 
-| Coluna | Status | Cor |
-|--------|--------|-----|
-| Novos | novo | Azul |
-| Em Atendimento | em_atendimento | Amarelo |
-| Qualificados | qualificado | Verde |
-| Proposta | proposta | Roxo |
-| Fechados | fechado | Verde escuro |
-| Perdidos | perdido | Vermelho |
+### Secao de Alertas no Dashboard
 
-### Arquivos a Criar
+Card com lista de leads que precisam de atencao imediata:
+- Leads parados ha mais de 3 dias
+- Ordenados por tempo parado (mais antigos primeiro)
+- Link direto para cada lead
+
+### Badge de Notificacao no Menu
+
+Contador no menu lateral mostrando quantos leads precisam de follow-up:
+- Numero vermelho ao lado de "Leads"
+- Atualiza automaticamente com queries
+
+---
+
+## Arquivos a Criar/Modificar
 
 ```text
 src/hooks/
-  useLeads.ts              - CRUD de leads com TanStack Query
+  useStaleLeads.ts          - Query para leads parados
 
 src/components/crm/
-  LeadKanban.tsx           - Container do Kanban
-  LeadColumn.tsx           - Coluna individual
-  LeadCard.tsx             - Card do lead (arrastravel)
-  LeadForm.tsx             - Formulario de cadastro/edicao
-  LeadFilters.tsx          - Filtros de busca
+  LeadCard.tsx              - Adicionar indicador de tempo
+  StaleLeadIndicator.tsx    - Componente do indicador visual
+  LeadAlerts.tsx            - Lista de alertas
+
+src/components/layout/
+  DashboardLayout.tsx       - Badge de notificacao no menu
+
+src/pages/
+  Dashboard.tsx             - Secao de alertas
 ```
 
-### Fluxo de Interacao
+---
+
+## Logica de Identificacao
+
+Um lead e considerado "parado" baseado em:
+1. Tempo desde `updated_at`
+2. Status atual (alguns estagios tem tolerancias diferentes)
+
+| Status | Tempo Critico |
+|--------|---------------|
+| novo | 24 horas |
+| em_atendimento | 48 horas |
+| qualificado | 72 horas |
+| proposta | 5 dias |
+| fechado | N/A |
+| perdido | N/A |
+
+---
+
+## Fluxo de Exibicao
 
 ```text
-Usuario arrasta card
+Dashboard
     |
-    v
-onDragStart -> salva lead_id e status original
+    +-> Card "Leads que Precisam de Atencao"
+           |
+           +-> Lista com avatar, nome, tempo parado, status
+           +-> Click -> Abre detalhes do lead
+
+Menu Lateral
     |
-    v
-onDragOver -> destaca coluna destino
+    +-> "Leads (3)" -> Badge vermelho com contador
+
+Kanban
     |
-    v
-onDrop -> identifica nova coluna
-    |
-    v
-Mutation -> atualiza lead.status no banco
-    |
-    v
-Invalidate query -> recarrega lista
+    +-> Cada card tem circulo colorido indicando urgencia
 ```
 
-### Implementacao Drag-and-Drop Nativo
+---
+
+## Secao Tecnica
+
+### Hook useStaleLeads
 
 ```typescript
-// LeadCard.tsx
-<div
-  draggable
-  onDragStart={(e) => {
-    e.dataTransfer.setData("leadId", lead.id);
-    e.dataTransfer.setData("fromStatus", lead.status);
-  }}
->
-  {/* Card content */}
-</div>
-
-// LeadColumn.tsx
-<div
-  onDragOver={(e) => e.preventDefault()}
-  onDrop={(e) => {
-    const leadId = e.dataTransfer.getData("leadId");
-    updateLeadStatus({ id: leadId, status: columnStatus });
-  }}
->
-  {leads.map(lead => <LeadCard key={lead.id} lead={lead} />)}
-</div>
-```
-
----
-
-## 3. Pagina de Detalhes do Imovel
-
-### Rota Nova
-
-```text
-/imoveis/:id -> PropertyDetailsPage
-```
-
-### Layout da Pagina
-
-```text
-+--------------------------------------------------+
-|  [Voltar]                      [Editar] [Excluir] |
-+--------------------------------------------------+
-|                                                   |
-|  +---------------------+  +--------------------+  |
-|  |                     |  | Titulo             |  |
-|  |   Galeria de Fotos  |  | Tipo | Status      |  |
-|  |   (carrossel)       |  | Preco              |  |
-|  |                     |  +--------------------+  |
-|  +---------------------+  | Endereco           |  |
-|                           | Mapa               |  |
-|  +--------------------+   +--------------------+  |
-|  | Thumbnails         |   | Caracteristicas    |  |
-|  +--------------------+   | - Quartos          |  |
-|                           | - Banheiros        |  |
-|  +--------------------+   | - Vagas            |  |
-|  | Descricao          |   +--------------------+  |
-|  |                    |   | Proprietario       |  |
-|  +--------------------+   | Nome | Tel | Email |  |
-+--------------------------------------------------+
-```
-
-### Arquivos a Criar
-
-```text
-src/pages/properties/
-  PropertyDetailsPage.tsx   - Pagina de detalhes
-
-src/components/properties/
-  PropertyGallery.tsx       - Galeria com thumbnails
-  PropertyInfo.tsx          - Informacoes principais
-  PropertyFeatures.tsx      - Caracteristicas
-  PropertyOwner.tsx         - Dados do proprietario
-```
-
----
-
-## 4. Edicao de Imoveis
-
-### Comportamento
-
-1. Clicar no card da lista -> abre pagina de detalhes
-2. Clicar em "Editar" -> abre modal com formulario preenchido
-3. Formulario reutiliza os mesmos componentes (PropertyFormStep1-4)
-4. Ao salvar, usa mutation `useUpdateProperty`
-
-### Alteracoes no PropertyForm
-
-```typescript
-interface PropertyFormProps {
-  property?: Property;  // Se existir, e edicao
-  onSuccess: () => void;
-  onCancel: () => void;
-}
-
-// Preencher valores iniciais
-const form = useForm({
-  defaultValues: property ? {
-    title: property.title,
-    code: property.code,
-    // ... demais campos
-  } : defaultValues
-});
-
-// Usar mutation correta
-const mutation = property 
-  ? useUpdateProperty() 
-  : useCreateProperty();
-```
-
----
-
-## 5. Ordem de Implementacao
-
-### Fase 1 - Correcao Urgente
-1. Corrigir postcss.config.js
-
-### Fase 2 - Funil de Vendas
-2. Criar useLeads.ts com queries e mutations
-3. Criar LeadCard.tsx com drag-and-drop
-4. Criar LeadColumn.tsx como drop target
-5. Criar LeadKanban.tsx orquestrando colunas
-6. Criar LeadForm.tsx para cadastro
-7. Atualizar LeadsPage.tsx com Kanban
-
-### Fase 3 - Detalhes e Edicao
-8. Criar PropertyDetailsPage.tsx
-9. Criar PropertyGallery.tsx
-10. Adicionar rota /imoveis/:id
-11. Modificar PropertyForm para suportar edicao
-12. Conectar click do card a pagina de detalhes
-
----
-
-## 6. Secao Tecnica
-
-### Hook useLeads
-
-```typescript
-export function useLeads(filters?: LeadFilters) {
+export function useStaleLeads() {
   return useQuery({
-    queryKey: ["leads", filters],
+    queryKey: ["stale-leads"],
     queryFn: async () => {
-      let query = supabase
+      // Busca leads que nao estao fechados/perdidos
+      const { data } = await supabase
         .from("leads")
-        .select(`
-          *,
-          property_type:property_types(id, name),
-          assigned_to_user:profiles!leads_assigned_to_fkey(full_name)
-        `)
-        .order("created_at", { ascending: false });
+        .select("*")
+        .not("status", "in", "(fechado,perdido)")
+        .order("updated_at", { ascending: true });
 
-      if (filters?.status) {
-        query = query.eq("status", filters.status);
-      }
-      if (filters?.search) {
-        query = query.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      return data?.filter((lead) => {
+        const hoursSinceUpdate = differenceInHours(
+          new Date(),
+          new Date(lead.updated_at)
+        );
+        const threshold = getThresholdByStatus(lead.status);
+        return hoursSinceUpdate > threshold;
+      });
     },
+    refetchInterval: 5 * 60 * 1000, // Atualiza a cada 5 min
   });
 }
 
-export function useUpdateLeadStatus() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: LeadStatus }) => {
-      const { data, error } = await supabase
-        .from("leads")
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq("id", id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-    },
-  });
+function getThresholdByStatus(status: LeadStatus): number {
+  const thresholds = {
+    novo: 24,
+    em_atendimento: 48,
+    qualificado: 72,
+    proposta: 120,
+    fechado: Infinity,
+    perdido: Infinity,
+  };
+  return thresholds[status];
 }
 ```
 
-### Lead Status Type
+### Componente StaleLeadIndicator
 
 ```typescript
-type LeadStatus = 
-  | "novo" 
-  | "em_atendimento" 
-  | "qualificado" 
-  | "proposta" 
-  | "fechado" 
-  | "perdido";
+function StaleLeadIndicator({ updatedAt, status }: Props) {
+  const hoursSince = differenceInHours(new Date(), new Date(updatedAt));
+  const threshold = getThresholdByStatus(status);
 
-const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
-  novo: { label: "Novo", color: "bg-blue-500" },
-  em_atendimento: { label: "Em Atendimento", color: "bg-yellow-500" },
-  qualificado: { label: "Qualificado", color: "bg-green-500" },
-  proposta: { label: "Proposta", color: "bg-purple-500" },
-  fechado: { label: "Fechado", color: "bg-emerald-600" },
-  perdido: { label: "Perdido", color: "bg-red-500" },
-};
+  const getColor = () => {
+    if (hoursSince < threshold * 0.5) return "bg-green-500";
+    if (hoursSince < threshold) return "bg-yellow-500";
+    if (hoursSince < threshold * 1.5) return "bg-orange-500";
+    return "bg-red-500";
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger>
+        <span className={\`h-2 w-2 rounded-full \${getColor()}\`} />
+      </TooltipTrigger>
+      <TooltipContent>
+        {formatDistanceToNow(new Date(updatedAt), { locale: ptBR })}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 ```
 
-### Drag-and-Drop Events
+### Dashboard LeadAlerts
 
 ```typescript
-// Estado de drag global
-const [draggedLead, setDraggedLead] = useState<string | null>(null);
-const [dropTarget, setDropTarget] = useState<LeadStatus | null>(null);
+function LeadAlerts() {
+  const { data: staleLeads, isLoading } = useStaleLeads();
 
-// Handlers
-const handleDragStart = (e: DragEvent, leadId: string) => {
-  e.dataTransfer.effectAllowed = "move";
-  setDraggedLead(leadId);
-};
+  if (!staleLeads?.length) return null;
 
-const handleDragOver = (e: DragEvent, status: LeadStatus) => {
-  e.preventDefault();
-  setDropTarget(status);
-};
+  return (
+    <Card className="border-red-200">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-red-500" />
+          Leads que Precisam de Atenção ({staleLeads.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {staleLeads.slice(0, 5).map((lead) => (
+          <LeadAlertItem key={lead.id} lead={lead} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+```
 
-const handleDrop = (e: DragEvent, newStatus: LeadStatus) => {
-  e.preventDefault();
-  if (draggedLead) {
-    updateStatus.mutate({ id: draggedLead, status: newStatus });
-  }
-  setDraggedLead(null);
-  setDropTarget(null);
-};
+### Badge no Menu
+
+```typescript
+function SidebarLeadsItem() {
+  const { data: staleLeads } = useStaleLeads();
+  const count = staleLeads?.length || 0;
+
+  return (
+    <Link to="/leads">
+      <span>Leads</span>
+      {count > 0 && (
+        <Badge variant="destructive" className="ml-auto">
+          {count > 99 ? "99+" : count}
+        </Badge>
+      )}
+    </Link>
+  );
+}
 ```
 
 ---
 
-## 7. Resultado Esperado
+## Ordem de Implementacao
 
-Ao final da implementacao:
+1. Criar hook `useStaleLeads` com logica de tempo
+2. Criar componente `StaleLeadIndicator`
+3. Adicionar indicador ao `LeadCard`
+4. Criar componente `LeadAlerts`
+5. Adicionar secao de alertas ao `Dashboard`
+6. Modificar `DashboardLayout` para incluir badge
+7. Adicionar dependencia `date-fns` (ja instalada)
 
-- Build funcionando sem erros
-- Funil de vendas visual com 6 colunas
-- Drag-and-drop para mover leads entre estagios
-- Pagina de detalhes do imovel com galeria de fotos
-- Edicao de imoveis atraves de modal no formulario existente
-- Navegacao entre lista, detalhes e edicao
+---
+
+## Resultado Esperado
+
+Ao final:
+- Cards de leads mostram indicador visual de urgencia
+- Dashboard exibe lista de leads que precisam de atencao
+- Menu lateral mostra badge com quantidade de leads parados
+- Atualizacao automatica a cada 5 minutos
+- Tooltips informativos com tempo exato
+
+---
+
+## Nota sobre Testes
+
+Para testar o cadastro de imoveis com fotos e a pagina de detalhes, sera necessario fazer login na aplicacao. O teste automatizado falhou porque as credenciais fornecidas nao eram validas.
+
+Apos a implementacao das notificacoes, voce podera:
+1. Fazer login manualmente na aplicacao
+2. Cadastrar um imovel com fotos usando o formulario de 4 etapas
+3. Navegar para a pagina de detalhes clicando no card
+4. Criar leads e observar os indicadores de tempo no Kanban
+5. Verificar os alertas no Dashboard
+
