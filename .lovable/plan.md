@@ -1,40 +1,51 @@
 
 
-# Plano: Metricas Reais no Dashboard + Teste de Cadastro
+# Plano: Graficos de Evolucao Mensal no Dashboard
 
 ## Resumo
 
-Implementar metricas dinamicas no Dashboard que consultam dados reais do banco de dados, substituindo os valores estaticos atuais por contadores em tempo real.
+Adicionar dois graficos ao Dashboard mostrando a evolucao historica dos ultimos 6 meses:
+1. Grafico de linhas mostrando quantidade de leads por mes
+2. Grafico de barras mostrando faturamento mensal
 
 ---
 
-## O Que Sera Implementado
+## O Que Sera Criado
 
-### Metricas no Dashboard
+### Grafico de Evolucao de Leads
 
-| Metrica | Fonte de Dados | Calculo |
-|---------|----------------|---------|
-| Imoveis Ativos | `properties` | COUNT WHERE status = 'disponivel' |
-| Leads | `leads` | COUNT WHERE status NOT IN ('fechado', 'perdido') |
-| Contratos Ativos | `rentals` | COUNT WHERE status = 'ativo' |
-| Faturamento Mes | `rental_installments` | SUM(paid_value) WHERE status = 'pago' AND payment_date no mes atual |
+Grafico de linha mostrando:
+- Quantidade de leads novos por mes
+- Quantidade de leads fechados por mes
+- Quantidade de leads perdidos por mes
 
-### Distribuicao de Leads por Status
+### Grafico de Faturamento Mensal
 
-Exibir grafico ou lista mostrando quantos leads estao em cada estagio do funil:
-- Novos
-- Em Atendimento
-- Qualificados
-- Proposta
-- Fechados (este mes)
-- Perdidos (este mes)
+Grafico de barras mostrando:
+- Total de parcelas pagas por mes
+- Cores diferenciadas para meses com bom/baixo desempenho
 
-### Atividade Recente
+---
 
-Lista das ultimas 5 acoes no sistema:
-- Imoveis cadastrados recentemente
-- Leads criados/atualizados
-- Parcelas pagas
+## Layout Visual
+
+```text
++--------------------------------------------------+
+|  Stats Cards (4 cards existentes)                 |
++--------------------------------------------------+
+|  Distribuicao de Leads (existente)                |
++--------------------------------------------------+
+|  +----------------------+  +--------------------+ |
+|  |  Evolucao de Leads   |  | Faturamento Mensal | |
+|  |  [Grafico de Linhas] |  | [Grafico de Barras]| |
+|  |  6 meses             |  | 6 meses            | |
+|  +----------------------+  +--------------------+ |
++--------------------------------------------------+
+|  Lead Alerts (existente)                          |
++--------------------------------------------------+
+|  Atividade Recente (existente)                    |
++--------------------------------------------------+
+```
 
 ---
 
@@ -42,251 +53,400 @@ Lista das ultimas 5 acoes no sistema:
 
 ```text
 src/hooks/
-  useDashboardStats.ts      - Hook para buscar todas as metricas
-
-src/pages/
-  Dashboard.tsx             - Atualizar para usar dados reais
+  useMonthlyStats.ts        - Hook para dados mensais (6 meses)
 
 src/components/dashboard/
-  StatCard.tsx              - Componente reutilizavel para stats
-  LeadsDistribution.tsx     - Distribuicao de leads por status
-  RecentActivity.tsx        - Lista de atividades recentes
+  LeadsEvolutionChart.tsx   - Grafico de evolucao de leads
+  RevenueChart.tsx          - Grafico de faturamento mensal
+
+src/pages/
+  Dashboard.tsx             - Integrar novos graficos
 ```
 
 ---
 
-## Arquitetura de Dados
+## Fonte de Dados
 
-```text
-Dashboard.tsx
-    |
-    +-> useDashboardStats()
-           |
-           +-> Query: properties (count disponivel)
-           +-> Query: leads (count por status)
-           +-> Query: rentals (count ativos)
-           +-> Query: rental_installments (soma pagos no mes)
-           |
-           v
-        { activeProperties, leads, activeRentals, monthlyRevenue }
+### Leads por Mes
+
+```sql
+SELECT 
+  DATE_TRUNC('month', created_at) as month,
+  COUNT(*) FILTER (WHERE status = 'novo') as novos,
+  COUNT(*) FILTER (WHERE status = 'fechado') as fechados,
+  COUNT(*) FILTER (WHERE status = 'perdido') as perdidos
+FROM leads
+WHERE created_at >= NOW() - INTERVAL '6 months'
+GROUP BY month
+ORDER BY month
+```
+
+### Faturamento por Mes
+
+```sql
+SELECT 
+  DATE_TRUNC('month', payment_date) as month,
+  SUM(paid_value) as total
+FROM rental_installments
+WHERE status = 'pago' 
+  AND payment_date >= NOW() - INTERVAL '6 months'
+GROUP BY month
+ORDER BY month
 ```
 
 ---
 
 ## Secao Tecnica
 
-### Hook useDashboardStats
+### Hook useMonthlyStats
 
 ```typescript
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { startOfMonth, endOfMonth } from "date-fns";
+import { subMonths, startOfMonth, endOfMonth, format } from "date-fns";
 
-interface DashboardStats {
-  activeProperties: number;
-  totalLeads: number;
-  leadsByStatus: Record<string, number>;
-  activeRentals: number;
-  monthlyRevenue: number;
+interface MonthlyLeadStats {
+  month: string;
+  label: string;
+  novos: number;
+  fechados: number;
+  perdidos: number;
+  total: number;
 }
 
-export function useDashboardStats() {
-  return useQuery({
-    queryKey: ["dashboard-stats"],
-    queryFn: async (): Promise<DashboardStats> => {
-      // Imoveis disponiveis
-      const { count: activeProperties } = await supabase
-        .from("properties")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "disponivel");
+interface MonthlyRevenueStats {
+  month: string;
+  label: string;
+  revenue: number;
+}
 
-      // Leads (todos exceto fechado/perdido)
+interface MonthlyStats {
+  leads: MonthlyLeadStats[];
+  revenue: MonthlyRevenueStats[];
+}
+
+export function useMonthlyStats() {
+  return useQuery({
+    queryKey: ["monthly-stats"],
+    queryFn: async (): Promise<MonthlyStats> => {
+      const now = new Date();
+      const sixMonthsAgo = subMonths(startOfMonth(now), 5);
+
+      // Buscar todos os leads dos ultimos 6 meses
       const { data: leads } = await supabase
         .from("leads")
-        .select("status");
+        .select("created_at, status")
+        .gte("created_at", sixMonthsAgo.toISOString());
 
-      const leadsByStatus = leads?.reduce((acc, lead) => {
-        acc[lead.status] = (acc[lead.status] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>) ?? {};
-
-      const totalLeads = leads?.filter(
-        (l) => l.status !== "fechado" && l.status !== "perdido"
-      ).length ?? 0;
-
-      // Contratos ativos
-      const { count: activeRentals } = await supabase
-        .from("rentals")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "ativo");
-
-      // Faturamento do mes
-      const now = new Date();
-      const monthStart = startOfMonth(now).toISOString();
-      const monthEnd = endOfMonth(now).toISOString();
-
+      // Buscar todos os pagamentos dos ultimos 6 meses
       const { data: payments } = await supabase
         .from("rental_installments")
-        .select("paid_value")
+        .select("payment_date, paid_value")
         .eq("status", "pago")
-        .gte("payment_date", monthStart)
-        .lte("payment_date", monthEnd);
+        .gte("payment_date", sixMonthsAgo.toISOString());
 
-      const monthlyRevenue = payments?.reduce(
-        (sum, p) => sum + (p.paid_value || 0),
-        0
-      ) ?? 0;
+      // Processar leads por mes
+      const leadsPerMonth = processLeadsByMonth(leads ?? [], now);
+
+      // Processar faturamento por mes
+      const revenuePerMonth = processRevenueByMonth(payments ?? [], now);
 
       return {
-        activeProperties: activeProperties ?? 0,
-        totalLeads,
-        leadsByStatus,
-        activeRentals: activeRentals ?? 0,
-        monthlyRevenue,
+        leads: leadsPerMonth,
+        revenue: revenuePerMonth,
       };
     },
-    refetchInterval: 60000, // Atualiza a cada minuto
+    refetchInterval: 5 * 60 * 1000, // 5 minutos
   });
 }
-```
 
-### Dashboard Atualizado
+function processLeadsByMonth(leads: any[], now: Date): MonthlyLeadStats[] {
+  const months: MonthlyLeadStats[] = [];
 
-```typescript
-export function Dashboard() {
-  const { data: stats, isLoading } = useDashboardStats();
+  for (let i = 5; i >= 0; i--) {
+    const monthDate = subMonths(now, i);
+    const monthStart = startOfMonth(monthDate);
+    const monthEnd = endOfMonth(monthDate);
+    const monthKey = format(monthStart, "yyyy-MM");
+    const label = format(monthDate, "MMM", { locale: ptBR });
 
-  const statsCards = [
-    {
-      title: "Imóveis Ativos",
-      value: stats?.activeProperties ?? 0,
-      description: "Disponíveis para venda/locação",
-      icon: Building2,
-      color: "text-blue-600",
-      bg: "bg-blue-100",
-    },
-    {
-      title: "Leads",
-      value: stats?.totalLeads ?? 0,
-      description: "Em andamento",
-      icon: Users,
-      color: "text-green-600",
-      bg: "bg-green-100",
-    },
-    {
-      title: "Contratos Ativos",
-      value: stats?.activeRentals ?? 0,
-      description: "Locações em andamento",
-      icon: FileText,
-      color: "text-orange-600",
-      bg: "bg-orange-100",
-    },
-    {
-      title: "Faturamento",
-      value: formatCurrency(stats?.monthlyRevenue ?? 0),
-      description: "Este mês",
-      icon: TrendingUp,
-      color: "text-purple-600",
-      bg: "bg-purple-100",
-    },
-  ];
+    const monthLeads = leads.filter((lead) => {
+      const createdAt = new Date(lead.created_at);
+      return createdAt >= monthStart && createdAt <= monthEnd;
+    });
 
-  return (
-    <div className="space-y-6">
-      {/* Stats Grid com dados reais */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {statsCards.map((stat) => (
-          <StatCard key={stat.title} {...stat} isLoading={isLoading} />
-        ))}
-      </div>
+    months.push({
+      month: monthKey,
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+      novos: monthLeads.filter((l) => l.status === "novo").length,
+      fechados: monthLeads.filter((l) => l.status === "fechado").length,
+      perdidos: monthLeads.filter((l) => l.status === "perdido").length,
+      total: monthLeads.length,
+    });
+  }
 
-      {/* Distribuicao de Leads */}
-      <LeadsDistribution data={stats?.leadsByStatus} />
+  return months;
+}
 
-      {/* Lead Alerts (ja existe) */}
-      <LeadAlerts />
+function processRevenueByMonth(payments: any[], now: Date): MonthlyRevenueStats[] {
+  const months: MonthlyRevenueStats[] = [];
 
-      {/* Atividade Recente */}
-      <RecentActivity />
-    </div>
-  );
+  for (let i = 5; i >= 0; i--) {
+    const monthDate = subMonths(now, i);
+    const monthStart = startOfMonth(monthDate);
+    const monthEnd = endOfMonth(monthDate);
+    const monthKey = format(monthStart, "yyyy-MM");
+    const label = format(monthDate, "MMM", { locale: ptBR });
+
+    const monthPayments = payments.filter((p) => {
+      if (!p.payment_date) return false;
+      const paymentDate = new Date(p.payment_date);
+      return paymentDate >= monthStart && paymentDate <= monthEnd;
+    });
+
+    const revenue = monthPayments.reduce(
+      (sum, p) => sum + (p.paid_value || 0),
+      0
+    );
+
+    months.push({
+      month: monthKey,
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+      revenue,
+    });
+  }
+
+  return months;
 }
 ```
 
-### Componente LeadsDistribution
+### Componente LeadsEvolutionChart
 
 ```typescript
-function LeadsDistribution({ data }: { data?: Record<string, number> }) {
-  const statusConfig = {
-    novo: { label: "Novos", color: "bg-blue-500" },
-    em_atendimento: { label: "Em Atendimento", color: "bg-yellow-500" },
-    qualificado: { label: "Qualificados", color: "bg-green-500" },
-    proposta: { label: "Proposta", color: "bg-purple-500" },
-    fechado: { label: "Fechados", color: "bg-emerald-600" },
-    perdido: { label: "Perdidos", color: "bg-red-500" },
-  };
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+interface LeadsEvolutionChartProps {
+  data?: MonthlyLeadStats[];
+  isLoading?: boolean;
+}
+
+export function LeadsEvolutionChart({ data, isLoading }: LeadsEvolutionChartProps) {
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Evolucao de Leads</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] flex items-center justify-center">
+            <div className="h-full w-full animate-pulse rounded bg-muted" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Distribuição de Leads</CardTitle>
+        <CardTitle className="text-lg">Evolucao de Leads</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-wrap gap-4">
-          {Object.entries(statusConfig).map(([status, config]) => (
-            <div key={status} className="flex items-center gap-2">
-              <div className={`h-3 w-3 rounded-full ${config.color}`} />
-              <span className="text-sm">
-                {config.label}: {data?.[status] ?? 0}
-              </span>
-            </div>
-          ))}
-        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="label" className="text-xs" />
+            <YAxis allowDecimals={false} className="text-xs" />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+              }}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="total"
+              name="Total"
+              stroke="#3b82f6"
+              strokeWidth={2}
+              dot={{ fill: "#3b82f6" }}
+            />
+            <Line
+              type="monotone"
+              dataKey="fechados"
+              name="Fechados"
+              stroke="#10b981"
+              strokeWidth={2}
+              dot={{ fill: "#10b981" }}
+            />
+            <Line
+              type="monotone"
+              dataKey="perdidos"
+              name="Perdidos"
+              stroke="#ef4444"
+              strokeWidth={2}
+              dot={{ fill: "#ef4444" }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
 }
 ```
 
-### Formatacao de Moeda
+### Componente RevenueChart
 
 ```typescript
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+
+interface RevenueChartProps {
+  data?: MonthlyRevenueStats[];
+  isLoading?: boolean;
+}
+
+export function RevenueChart({ data, isLoading }: RevenueChartProps) {
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Faturamento Mensal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] flex items-center justify-center">
+            <div className="h-full w-full animate-pulse rounded bg-muted" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Calcular media para colorir barras
+  const average = data?.reduce((sum, d) => sum + d.revenue, 0) / (data?.length || 1);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Faturamento Mensal</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="label" className="text-xs" />
+            <YAxis
+              tickFormatter={(value) => formatCurrency(value)}
+              className="text-xs"
+              width={80}
+            />
+            <Tooltip
+              formatter={(value: number) => [formatCurrency(value), "Faturamento"]}
+              contentStyle={{
+                backgroundColor: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+              }}
+            />
+            <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
+              {data?.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.revenue >= average ? "#8b5cf6" : "#a78bfa"}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+### Dashboard Atualizado
+
+```typescript
+import { useMonthlyStats } from "@/hooks/useMonthlyStats";
+import { LeadsEvolutionChart } from "@/components/dashboard/LeadsEvolutionChart";
+import { RevenueChart } from "@/components/dashboard/RevenueChart";
+
+export function Dashboard() {
+  const { data: stats, isLoading } = useDashboardStats();
+  const { data: monthlyStats, isLoading: isLoadingMonthly } = useMonthlyStats();
+
+  return (
+    <div className="space-y-6">
+      {/* ... Stats Cards e LeadsDistribution existentes ... */}
+
+      {/* Graficos de Evolucao */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <LeadsEvolutionChart
+          data={monthlyStats?.leads}
+          isLoading={isLoadingMonthly}
+        />
+        <RevenueChart
+          data={monthlyStats?.revenue}
+          isLoading={isLoadingMonthly}
+        />
+      </div>
+
+      {/* Lead Alerts e Atividade Recente existentes */}
+    </div>
+  );
 }
 ```
 
 ---
 
-## Ordem de Implementacao
+## Biblioteca de Graficos
 
-1. Criar hook `useDashboardStats` com queries ao banco
-2. Criar componente `StatCard` com estado de loading
-3. Criar componente `LeadsDistribution`
-4. Criar componente `RecentActivity`
-5. Atualizar `Dashboard.tsx` para usar dados reais
-6. Adicionar formatacao de moeda
-7. Testar com dados existentes
+O projeto ja tem `recharts` instalado (versao ^2.15.4) mas ainda nao esta sendo usado. Os componentes utilizarao:
+
+- `LineChart` - para evolucao de leads
+- `BarChart` - para faturamento mensal
+- `ResponsiveContainer` - para responsividade
+- `Tooltip` - informacoes ao passar o mouse
+- `Legend` - legenda do grafico
+- `CartesianGrid` - grade de fundo
 
 ---
 
-## Teste de Cadastro de Imovel
+## Ordem de Implementacao
 
-Apos implementar as metricas, sera necessario testar manualmente:
-
-1. Fazer login na aplicacao
-2. Navegar para /imoveis
-3. Clicar em "Novo Imovel"
-4. Preencher as 4 etapas do formulario
-5. Fazer upload de fotos
-6. Salvar e verificar se aparece na listagem
-7. Clicar no card para abrir a pagina de detalhes
-8. Verificar se as fotos aparecem na galeria
-
-O teste automatizado nao pode ser executado porque requer credenciais de login validas, que precisam ser fornecidas pelo usuario.
+1. Criar hook `useMonthlyStats` para buscar dados dos ultimos 6 meses
+2. Criar componente `LeadsEvolutionChart` com grafico de linhas
+3. Criar componente `RevenueChart` com grafico de barras
+4. Integrar graficos no `Dashboard.tsx`
+5. Adicionar estados de loading
+6. Testar responsividade em diferentes tamanhos de tela
 
 ---
 
@@ -294,10 +454,11 @@ O teste automatizado nao pode ser executado porque requer credenciais de login v
 
 Ao final da implementacao:
 
-- Dashboard exibe metricas reais do banco de dados
-- Contadores atualizam automaticamente a cada minuto
-- Distribuicao visual de leads por status
-- Faturamento do mes calculado com base em parcelas pagas
-- Cards com estado de loading enquanto carrega dados
-- Formatacao correta de valores monetarios em Real (BRL)
+- Dashboard exibe dois graficos lado a lado
+- Grafico de leads mostra evolucao de 6 meses com 3 linhas (Total, Fechados, Perdidos)
+- Grafico de faturamento mostra barras coloridas por desempenho vs media
+- Tooltips informativos ao passar o mouse
+- Estados de loading enquanto carrega dados
+- Layout responsivo (empilha em mobile)
+- Atualizacao automatica a cada 5 minutos
 
