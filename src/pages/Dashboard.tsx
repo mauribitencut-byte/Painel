@@ -1,8 +1,11 @@
 import { Building2, Users, FileText, TrendingUp } from "lucide-react";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { useMonthlyStats } from "@/hooks/useMonthlyStats";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { LeadsDistribution } from "@/components/dashboard/LeadsDistribution";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
+import { LeadsEvolutionChart } from "@/components/dashboard/LeadsEvolutionChart";
+import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { LeadAlerts } from "@/components/crm/LeadAlerts";
 
 function formatCurrency(value: number): string {
@@ -14,6 +17,7 @@ function formatCurrency(value: number): string {
 
 export function Dashboard() {
   const { data: stats, isLoading } = useDashboardStats();
+  const { data: monthlyStats, isLoading: isLoadingMonthly } = useMonthlyStats();
 
   const statsCards = [
     {
@@ -68,6 +72,18 @@ export function Dashboard() {
 
       {/* Distribuição de Leads */}
       <LeadsDistribution data={stats?.leadsByStatus} isLoading={isLoading} />
+
+      {/* Gráficos de Evolução */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <LeadsEvolutionChart
+          data={monthlyStats?.leads}
+          isLoading={isLoadingMonthly}
+        />
+        <RevenueChart
+          data={monthlyStats?.revenue}
+          isLoading={isLoadingMonthly}
+        />
+      </div>
 
       {/* Lead Alerts */}
       <LeadAlerts />
